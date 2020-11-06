@@ -1,0 +1,226 @@
+---
+cidr_networks:
+  container: 172.29.236.0/22
+  storage: 172.29.244.0/22
+
+used_ips:
+  - "172.29.236.1,172.29.236.254"
+  - "172.29.244.1,172.29.244.254"
+
+global_overrides:
+  internal_lb_vip_address: 172.29.236.250
+  #
+  # The below domain name must resolve to an IP address
+  # in the CIDR specified in haproxy_keepalived_external_vip_cidr.
+  # If using different protocols (https/http) for the public/internal
+  # endpoints the two addresses must be different.
+  #
+  #external_lb_vip_address: vpscloud.vietnix.vn
+  external_lb_vip_address: 192.168.0.250
+  management_bridge: "br-mgmt"
+  provider_networks:
+    - network:
+        container_bridge: "br-mgmt"
+        container_type: "veth"
+        container_interface: "eth1"
+        ip_from_q: "container"
+        type: "raw"
+        group_binds:
+          - all_containers
+          - hosts
+        is_container_address: true
+#    - network:
+#        container_bridge: "br-vlan"
+#        container_type: "veth"
+#        container_interface: "eth12"
+#        host_bind_override: "bond1"
+#        type: "flat"
+#        net_name: "flat"
+#        group_binds:
+#          - neutron_linuxbridge_agent
+    - network:
+        container_bridge: "br-vlan"
+        container_type: "veth"
+        container_interface: "eth11"
+        host_bind_override: "bond1"
+        type: "vlan"
+        range: "200:209"
+        net_name: "physnet1"
+        group_binds:
+          - neutron_linuxbridge_agent
+          - neutron_sriov_nic_agent
+    - network:
+        container_bridge: "br-storage"
+        container_type: "veth"
+        container_interface: "eth2"
+        ip_from_q: "storage"
+        type: "raw"
+        group_binds:
+          - glance_api
+          - cinder_api
+          - cinder_volume
+          - nova_compute
+
+###
+### Infrastructure
+###
+
+# galera, memcache, rabbitmq, utility
+shared-infra_hosts:
+  infra1:
+    ip: 172.29.236.11
+    affinity:
+      galera_container: 3
+      rabbit_mq_container: 3
+      memcached_container: 3
+
+
+# repository (apt cache, python packages, etc)
+repo-infra_hosts:
+  infra1:
+    ip: 172.29.236.11
+    affinity:
+      repo_container: 3
+
+# load balancer
+# Ideally the load balancer should not use the Infrastructure hosts.
+# Dedicated hardware is best for improved performance and security.
+haproxy_hosts:
+  infra1:
+    ip: 172.29.236.11
+
+# rsyslog server
+#log_hosts:
+#  infra1:
+#    ip: 172.29.236.11
+
+###
+### OpenStack
+###
+
+# keystone
+identity_hosts:
+  infra1:
+    ip: 172.29.236.11
+    affinity:
+      keystone_container: 3
+
+# cinder api services
+storage-infra_hosts:
+  infra1:
+    ip: 172.29.236.11
+    affinity:
+      cinder_api_container: 3
+
+# glance
+# The settings here are repeated for each infra host.
+# They could instead be applied as global settings in
+# user_variables, but are left here to illustrate that
+# each container could have different storage targets.
+image_hosts:
+  infra1:
+    ip: 172.29.236.11
+    affinity:
+      glance_container: 3
+
+# placement
+placement-infra_hosts:
+  infra1:
+    ip: 172.29.236.11
+    affinity:
+      placement_container: 3
+
+# nova api, conductor, etc services
+compute-infra_hosts:
+  infra1:
+    ip: 172.29.236.11
+    affinity:
+      compute-infra_container: 3
+
+# heat
+orchestration_hosts:
+  infra1:
+    ip: 172.29.236.11
+    affinity:
+      orchestration_container: 3
+
+# horizon
+dashboard_hosts:
+  infra1:
+    ip: 172.29.236.11
+    affinity:
+      dashboard_container: 3
+
+# neutron server, agents (L3, etc)
+#network_hosts:
+#  infra1:
+#    ip: 172.29.236.11
+
+neutron-server_hosts:
+  infra1:
+    ip: 172.29.236.11
+    affinity:
+      neutron_server_container: 3
+
+neutron-agents_hosts:
+  compute1:
+    ip: 172.29.236.21
+  compute2:
+    ip: 172.29.236.22
+
+
+# ceilometer (telemetry data collection)
+metering-infra_hosts:
+  infra1:
+    ip: 172.29.236.11
+    affinity:
+      ceilometer_central_container: 3
+
+# aodh (telemetry alarm service)
+metering-alarm_hosts:
+  infra1:
+    ip: 172.29.236.11
+    affinity:
+      aodh_container: 3
+
+# gnocchi (telemetry metrics storage)
+metrics_hosts:
+  infra1:
+    ip: 172.29.236.11
+    affinity:
+      gnocchi_container: 3
+
+# nova hypervisors
+compute_hosts:
+  compute1:
+    ip: 172.29.236.21
+  compute2:
+    ip: 172.29.236.22
+
+# ceilometer compute agent (telemetry data collection)
+metering-compute_hosts:
+  compute1:
+    ip: 172.29.236.21
+  compute2:
+    ip: 172.29.236.22
+
+# cinder volume hosts (NFS-backed)
+# The settings here are repeated for each infra host.
+# They could instead be applied as global settings in
+# user_variables, but are left here to illustrate that
+# each container could have different storage targets.
+storage_hosts:
+  infra1:
+    ip: 172.29.236.11
+    container_vars:
+      cinder_backends:
+        limit_container_types: cinder_volume
+        rbd:
+          volume_group: cinder-volumes
+          volume_driver: cinder.volume.drivers.rbd.RBDDriver
+          volume_backend_name: rbd
+          rbd_pool: cinder-volumes
+          rbd_ceph_conf: /etc/ceph/ceph.conf
+          rbd_user: cinder
+    affinity:
+      cinder_volumes_container: 3
